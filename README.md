@@ -36,16 +36,18 @@ Windows 上的微信公众号文章采集命令行工具，面向学术研究与
 
 ## 安装
 
+> 第一次安装？请按 [docs/install.md](docs/install.md) 的逐步教程操作。
+
 ### 方式一：开发用法（从源码运行）
 
 ```powershell
-git clone <本仓库地址> awa-cli
+git clone https://github.com/tudoopotato/awa-cli.git awa-cli
 cd awa-cli
 uv sync
 uv run awa --help
 ```
 
-> 把 `<本仓库地址>` 替换为本仓库实际的 Git 地址；已在本地拿到源码时可跳过 `git clone`，直接进入项目目录。
+> 仓库地址为 `https://github.com/tudoopotato/awa-cli.git`；已在本地拿到源码时可跳过 `git clone`，直接进入项目目录。
 
 ### 方式二：全局安装（uv tool）
 

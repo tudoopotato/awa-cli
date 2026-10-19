@@ -180,6 +180,7 @@ def _dispatch(args: argparse.Namespace) -> int:
 
 
 def main() -> int:
+    output.ensure_utf8_streams()
     parser = _build_parser()
     args = parser.parse_args()
 

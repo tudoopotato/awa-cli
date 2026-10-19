@@ -1,0 +1,21 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# 构建产物
+dist/
+build/
+*.egg-info/
+
+# 运行时数据
+storages/
+data/
+.mitmproxy/
+.playwright-browsers/
+custom.yaml
+
+# 编辑器
+.idea/
+.vscode/

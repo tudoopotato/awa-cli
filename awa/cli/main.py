@@ -43,6 +43,11 @@ def _build_parser() -> argparse.ArgumentParser:
 
     doctor = subparsers.add_parser("doctor", help="检查运行前置条件")
     doctor.add_argument("--install-ca", action="store_true", help="安装 CA 证书")
+    doctor.add_argument(
+        "--install-browser",
+        action="store_true",
+        help="安装离线归档所需的 Chromium",
+    )
     doctor.add_argument("--home", type=str, default=argparse.SUPPRESS, help=_HOME_HELP)
 
     scan = subparsers.add_parser("scan", help="只读预览公众号主页文章")
@@ -122,7 +127,11 @@ def _dispatch(args: argparse.Namespace) -> int:
     if command == "doctor":
         from . import commands
 
-        return commands.run_doctor(install_ca=args.install_ca, home=args.home)
+        return commands.run_doctor(
+            install_ca=args.install_ca,
+            install_browser=args.install_browser,
+            home=args.home,
+        )
     if command == "scan":
         error = _validate_dates(args.date_mode, args.start, args.end)
         if error:

@@ -325,11 +325,39 @@ def _check_dependencies() -> dict:
 _NON_BLOCKING_CHECKS = frozenset({"playwright_browsers"})
 
 _PLAYWRIGHT_TIMEOUT_SECONDS = 30
+_PLAYWRIGHT_INSTALL_TIMEOUT_SECONDS = 900
+
+
+def _is_frozen() -> bool:
+    """是否运行在 PyInstaller 打包后的 frozen 环境中。"""
+
+    import sys
+
+    return bool(getattr(sys, "frozen", False))
+
+
+def _locate_bundled_playwright_driver():
+    """定位 Playwright wheel 自带的驱动，返回 ``(node.exe, cli.js)``；缺失时返回 None。"""
+
+    from pathlib import Path
+
+    try:
+        import playwright
+    except Exception:  # noqa: BLE001 - 未安装 Playwright 时视为无内置驱动
+        return None
+    driver = Path(playwright.__file__).resolve().parent / "driver"
+    node = driver / "node.exe"
+    cli = driver / "package" / "cli.js"
+    if node.exists() and cli.exists():
+        return node, cli
+    return None
 
 
 def _playwright_install_command(browsers_root) -> str:
     """返回可直接粘贴执行的 PowerShell 安装命令。"""
 
+    if _is_frozen():
+        return "awa doctor --install-browser"
     return (
         f"$env:PLAYWRIGHT_BROWSERS_PATH='{browsers_root}'; "
         "uv run python -m playwright install chromium"
@@ -402,9 +430,17 @@ def _run_playwright_dry_run(
 
     env = dict(os.environ)
     env["PLAYWRIGHT_BROWSERS_PATH"] = str(browsers_root)
+    if _is_frozen():
+        driver = _locate_bundled_playwright_driver()
+        if driver is None:
+            return (None, "frozen 模式下未找到内置 Playwright 驱动", True)
+        node, cli = driver
+        command = [str(node), str(cli), "install", "--dry-run", "chromium"]
+    else:
+        command = [sys.executable, "-m", "playwright", "install", "--dry-run", "chromium"]
     try:
         completed = subprocess.run(
-            [sys.executable, "-m", "playwright", "install", "--dry-run", "chromium"],
+            command,
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -596,6 +632,68 @@ def _check_playwright_browsers(home) -> dict:
     }
 
 
+def _install_playwright_browsers(home) -> dict:
+    """把离线归档所需的 Chromium 安装到 ``<home>/.playwright-browsers``。
+
+    返回 ``{"ok": bool, "message": str, "browsersRoot": str}``，不抛出未捕获异常。
+    """
+
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    browsers_root = Path(home) / ".playwright-browsers"
+    try:
+        browsers_root.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        message = f"创建浏览器目录失败：{exc}"
+        output.warn(message)
+        return {"ok": False, "message": message, "browsersRoot": str(browsers_root)}
+
+    env = dict(os.environ)
+    env["PLAYWRIGHT_BROWSERS_PATH"] = str(browsers_root)
+
+    driver = _locate_bundled_playwright_driver() if _is_frozen() else None
+    if driver is not None:
+        node, cli = driver
+        command = [str(node), str(cli), "install", "chromium"]
+    else:
+        command = [sys.executable, "-m", "playwright", "install", "chromium"]
+
+    output.progress(f"正在安装 Chromium 到 {browsers_root}……")
+    try:
+        completed = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=_PLAYWRIGHT_INSTALL_TIMEOUT_SECONDS,
+            env=env,
+        )
+    except subprocess.TimeoutExpired:
+        message = f"Playwright Chromium 安装超时（{_PLAYWRIGHT_INSTALL_TIMEOUT_SECONDS} 秒）"
+        output.warn(message)
+        return {"ok": False, "message": message, "browsersRoot": str(browsers_root)}
+    except (OSError, subprocess.SubprocessError) as exc:
+        message = f"Playwright Chromium 安装调用失败：{exc}"
+        output.warn(message)
+        return {"ok": False, "message": message, "browsersRoot": str(browsers_root)}
+
+    if completed.returncode != 0:
+        output_text = (completed.stderr or completed.stdout or "").strip()[:200]
+        message = f"Playwright Chromium 安装返回 {completed.returncode}：{output_text}"
+        output.warn(message)
+        return {"ok": False, "message": message, "browsersRoot": str(browsers_root)}
+
+    return {
+        "ok": True,
+        "message": f"Chromium 已安装到 {browsers_root}",
+        "browsersRoot": str(browsers_root),
+    }
+
+
 def _doctor_status(checks: list[dict]) -> str:
     by_name = {check["name"]: check for check in checks}
     window = by_name.get("wechat_home_window")
@@ -613,7 +711,12 @@ def _doctor_status(checks: list[dict]) -> str:
     return "ok"
 
 
-def run_doctor(*, install_ca: bool = False, home: str | None = None) -> int:
+def run_doctor(
+    *,
+    install_ca: bool = False,
+    install_browser: bool = False,
+    home: str | None = None,
+) -> int:
     """检查运行前置条件（Task 2 实现）。"""
 
     from awa.cli.bootstrap import HeadlessRuntime
@@ -663,6 +766,10 @@ def run_doctor(*, install_ca: bool = False, home: str | None = None) -> int:
         window_check, account_name = _check_home_window(runtime, config)
         checks.append(window_check)
         checks.append(_check_dependencies())
+        if install_browser:
+            install_result = _install_playwright_browsers(home_path)
+            if not install_result.get("ok"):
+                output.warn(f"安装 Chromium 失败：{install_result.get('message')}")
         checks.append(_check_playwright_browsers(home_path))
 
         ready = all(

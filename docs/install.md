@@ -10,7 +10,86 @@
 
 ---
 
+## 0. 快速安装：独立 exe（无需 Python/uv/Git）
+
+> 使用独立 exe 的用户请直接按本节操作，并**跳过第 1–3 节**；第 4 节之后凡写作 `awa` 的命令，在 exe 模式下都替换为 `.\awa.exe`。
+
+1. **下载**：打开 <https://github.com/tudoopotato/awa-cli/releases>，下载最新版本的 `awa-<version>-windows-x64.zip`（例如 `awa-0.1.0-windows-x64.zip`）。
+
+2. **校验（建议）**：下载 Release 附带的 `SHA256SUMS.txt`，在 ZIP 所在目录执行：
+
+   ```powershell
+   Get-FileHash .\awa-0.1.0-windows-x64.zip -Algorithm SHA256
+   ```
+
+   将输出的 SHA256 值与 `SHA256SUMS.txt` 中对应行比对，一致再继续。
+
+3. **解压**：解压到任意目录，建议路径不含空格与中文（例如 `D:\tools\awa`）。解压后为 onedir 结构：
+
+   ```text
+   D:\tools\awa\
+   ├── awa.exe
+   └── _internal\
+   ```
+
+   `awa.exe` 必须与 `_internal\` 保持在同一目录，不要只拷贝 `awa.exe`；整个目录约 172 MB。
+
+4. **首次运行**：在解压目录打开 PowerShell，依次执行：
+
+   ```powershell
+   cd D:\tools\awa
+   .\awa.exe --help
+   .\awa.exe doctor
+   ```
+
+   `--help` 应打印 usage 并列出 `doctor` / `scan` / `crawl` / `articles`。`doctor` 此时退出码可能为 2（尚未打开公众号主页、CA 未安装等），按下面的步骤处理即可。
+
+5. **CA 证书（两步，顺序不能反）**：
+
+   1. 在微信 PC 客户端中**手动打开目标公众号主页**（CLI 无法自行打开窗口）；
+   2. 先执行一次采集，让 mitmproxy 生成证书文件：
+
+      ```powershell
+      .\awa.exe crawl --limit 1
+      ```
+
+   3. 再把证书安装到当前用户根证书库（无需管理员权限）：
+
+      ```powershell
+      .\awa.exe doctor --install-ca
+      ```
+
+   4. 最后确认：
+
+      ```powershell
+      .\awa.exe doctor
+      ```
+
+   `checks[]` 中 `ca_certificate.ok=true` 即完成。
+
+6. **离线归档浏览器（仅 `--offline` 需要）**：
+
+   ```powershell
+   .\awa.exe doctor --install-browser
+   ```
+
+   该命令使用随包分发的 Playwright 驱动，将 Chromium 下载到 `<AWA_HOME>\.playwright-browsers`（默认 `%LOCALAPPDATA%\awa\.playwright-browsers`），需要联网。
+
+7. **升级**：下载新版 `awa-<version>-windows-x64.zip`，解压后替换程序目录中的 `awa.exe` 与 `_internal\` 即可。数据目录 `AWA_HOME`（默认 `%LOCALAPPDATA%\awa`）不在程序目录内，升级不会影响数据库、归档与证书。
+
+8. **卸载**：直接删除程序目录（例如 `D:\tools\awa`）即可，`AWA_HOME` 默认保留；如需彻底清理数据，确认已备份后再按 11.4 节删除该目录。
+
+9. **注意事项**：
+
+   - 发布包**未签名**，Windows SmartScreen 可能提示“未知发布者”；确认来源并核对 SHA256 后，可选“更多信息 → 仍要运行”。
+   - 采集行为与源码安装完全一致：必须由你手动在微信中打开目标公众号主页，采集期间不要操作鼠标键盘。
+   - 若使用 `--home <目录>` 或自定义 `AWA_HOME`，数据库、归档与浏览器缓存都会跟随该目录。
+
+---
+
 ## 1. 前置条件
+
+> 使用第 0 节独立 exe 安装的用户无需准备 Python / uv / Git，请直接按第 0 节操作并跳过第 1–3 节。
 
 开始前请确认以下五项。
 
@@ -276,6 +355,8 @@ uv run awa crawl --limit 1
 **不加 `--offline` 就完全不需要这一步。** 普通的 `scan` / `crawl` / `articles` 都不依赖 Playwright 浏览器。
 
 只有需要把文章保存为可离线打开的网页副本（`crawl --offline`）时，才要安装 Chromium。安装目录必须与 CLI 使用的缓存目录一致，即 `<AWA_HOME>\.playwright-browsers`。
+
+> **使用独立 exe（第 0 节）的用户**：无需设置 `PLAYWRIGHT_BROWSERS_PATH`，也不用 `python -m playwright`，直接在解压目录执行 `.\awa.exe doctor --install-browser` 即可。
 
 在项目根目录执行（命令与 `awa doctor` 中 `playwright_browsers` 检查项给出的提示一致）：
 

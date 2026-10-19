@@ -6,12 +6,18 @@ wheel 正常安装时 ``importlib.resources.files`` 指向解包后的真实目�
 
 from __future__ import annotations
 
+import sys
 from importlib.resources import files
 from pathlib import Path
 
 
 def resources_dir() -> Path:
     """返回 ``awa/resources`` 目录的真实文件系统路径。"""
+
+    if getattr(sys, "frozen", False):
+        meipass = getattr(sys, "_MEIPASS", None)
+        base = Path(meipass) if meipass else Path(sys.executable).parent
+        return base / "awa" / "resources"
 
     return Path(str(files("awa.resources")))
 

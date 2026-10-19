@@ -62,7 +62,28 @@ awa --help
 pipx install .
 ```
 
-安装完成后，下文所有示例都可以直接使用 `awa ...`。若采用开发用法，把 `awa` 换成 `uv run awa` 即可（例如 `uv run awa doctor`）。
+### 方式四：下载独立 exe（无需 Python，推荐给非开发者）
+
+1. 打开仓库 Release 页面 <https://github.com/tudoopotato/awa-cli/releases>，下载最新版本的 `awa-<version>-windows-x64.zip`（例如 `awa-0.1.0-windows-x64.zip`）；
+2. 解压到任意目录（建议路径不含空格与中文）。解压后为 onedir 结构：`awa.exe` 与 `_internal\` 必须保持在同一目录，整个目录约 172 MB；
+3. 在解压目录打开 PowerShell，依次执行：
+
+   ```powershell
+   .\awa.exe --help
+   .\awa.exe doctor
+   ```
+
+无需安装 Python / uv / Git。程序目录未加入 PATH，因此后续所有示例中的 `awa` 都要替换为 `.\awa.exe`（例如 `.\awa.exe scan --limit 20`）。
+
+补充说明：
+
+- CA 流程与源码安装一致：先执行 `.\awa.exe crawl --limit 1` 让 mitmproxy 生成证书，再执行 `.\awa.exe doctor --install-ca`，最后用 `.\awa.exe doctor` 确认 `ca_certificate.ok=true`；
+- 离线归档所需 Chromium 可执行 `.\awa.exe doctor --install-browser`，由内置 Playwright 驱动下载到 `<AWA_HOME>\.playwright-browsers`；
+- 发布包未签名，Windows SmartScreen 可能提示“未知发布者”；建议用 Release 附带的 `SHA256SUMS.txt` 校验下载的 ZIP 后再运行；
+- 数据目录仍是 `AWA_HOME`（默认 `%LOCALAPPDATA%\awa`）；升级或卸载只替换/删除程序目录，数据保留；
+- 仍需由你手动在微信 PC 客户端打开目标公众号主页，CLI 无法自行打开窗口。
+
+安装完成后，下文所有示例都可以直接使用 `awa ...`。若采用开发用法，把 `awa` 换成 `uv run awa` 即可（例如 `uv run awa doctor`）；若采用方式四，把 `awa` 换成 `.\awa.exe`，并在解压目录中执行。
 
 ---
 

@@ -1,0 +1,121 @@
+name: Build Windows exe
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build awa.exe (windows-x64)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install Python 3.13
+        run: uv python install 3.13
+
+      - name: Install dependencies
+        run: uv sync --group build
+
+      - name: Build with PyInstaller
+        run: uv run pyinstaller packaging/awa.spec --noconfirm
+
+      - name: Smoke test
+        shell: pwsh
+        run: |
+          # doctor 会向 stderr 输出提示；避免把正常输出当成终止错误。
+          $ErrorActionPreference = 'Continue'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $exe = Join-Path $PWD 'dist\awa\awa.exe'
+
+          if (-not (Test-Path -LiteralPath $exe)) {
+              throw "Built executable not found: $exe"
+          }
+
+          & $exe --help
+          if ($LASTEXITCODE -ne 0) {
+              throw "awa.exe --help exited with code $LASTEXITCODE"
+          }
+
+          # doctor 会输出大量 JSON；重定向到文件，只回显末尾，避免日志爆量。
+          $doctorLog = Join-Path $env:RUNNER_TEMP 'awa-doctor.json'
+          & $exe doctor --home "$env:RUNNER_TEMP\awa-smoke" *> $doctorLog
+          $doctorCode = $LASTEXITCODE
+          Get-Content -LiteralPath $doctorLog -Tail 40
+          if ($doctorCode -ne 0 -and $doctorCode -ne 2) {
+              throw "awa.exe doctor exited with code $doctorCode (expected 0 or 2)"
+          }
+
+          $required = @(
+              'dist\awa\_internal\awa\resources\system.yaml',
+              'dist\awa\_internal\playwright\driver\node.exe'
+          )
+          foreach ($path in $required) {
+              if (-not (Test-Path -LiteralPath $path)) {
+                  throw "Missing required file: $path"
+              }
+          }
+
+          # doctor 允许退出码 2；显式清零，避免 Actions 按 $LASTEXITCODE 判定步骤失败。
+          exit 0
+
+      - name: Read version
+        shell: pwsh
+        run: |
+          $version = (uv run python -c "import pathlib, tomllib; print(tomllib.loads(pathlib.Path('pyproject.toml').read_text(encoding='utf-8'))['project']['version'])").Trim()
+          if ($LASTEXITCODE -ne 0 -or -not $version) {
+              throw "Failed to read version from pyproject.toml"
+          }
+          [System.IO.File]::AppendAllText(
+              $env:GITHUB_ENV,
+              "VERSION=$version`n",
+              (New-Object System.Text.UTF8Encoding($false))
+          )
+          Write-Host "VERSION=$version"
+
+      - name: Package zip
+        shell: pwsh
+        run: |
+          Compress-Archive -Path 'dist\awa' -DestinationPath "dist\awa-$env:VERSION-windows-x64.zip" -ErrorAction Stop
+
+      - name: Generate SHA256SUMS
+        shell: pwsh
+        run: |
+          $zipName = "awa-$env:VERSION-windows-x64.zip"
+          $hash = (Get-FileHash -LiteralPath (Join-Path 'dist' $zipName) -Algorithm SHA256 -ErrorAction Stop).Hash
+          [System.IO.File]::WriteAllText(
+              (Join-Path $PWD 'dist\SHA256SUMS.txt'),
+              "$hash  $zipName`n",
+              (New-Object System.Text.UTF8Encoding($false))
+          )
+          Get-Content -LiteralPath 'dist\SHA256SUMS.txt'
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: awa-windows-x64
+          path: |
+            dist/awa-*-windows-x64.zip
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/awa-*-windows-x64.zip
+            dist/SHA256SUMS.txt
+          fail_on_unmatched_files: true

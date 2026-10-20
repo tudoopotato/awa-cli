@@ -17,12 +17,13 @@ description: 采集微信公众号公开文章。当用户要求“爬取/采集
 - **CA 证书**：MITM 抓包依赖 mitmproxy 的 CA 证书已安装到**当前用户根证书库**。先用 `awa doctor` 检查；若 `ca_certificate.ok=false`，执行 `awa doctor --install-ca` 安装。
 - **数据目录 AWA_HOME**：默认 `%LOCALAPPDATA%\awa`（即 `C:\Users\<用户>\AppData\Local\awa`），可用环境变量 `AWA_HOME` 或命令行 `--home <路径>` 覆盖（解析优先级：`--home` > `AWA_HOME` 环境变量 > `%LOCALAPPDATA%\awa`）。
 - **评论采集与离线归档均为可选能力**：`crawl --comments`、`crawl --offline` 默认**关闭**，只在用户明确需要评论数据或离线网页副本时才开启；两者都会显著增加单篇耗时。
-- **离线归档需先安装 Playwright Chromium**（仅 `--offline` 需要）。浏览器缓存目录须与 CLI 使用的目录一致（`<AWA_HOME>\.playwright-browsers`，默认即 `%LOCALAPPDATA%\awa\.playwright-browsers`），在 PowerShell 中执行：
+- **离线归档需先安装 Playwright Chromium**（仅 `--offline` 需要）。用 CLI 自带命令安装即可，它会自动装到 CLI 使用的缓存目录（`<AWA_HOME>\.playwright-browsers`，默认即 `%LOCALAPPDATA%\awa\.playwright-browsers`），无需手动设置环境变量：
 
   ```powershell
-  $env:PLAYWRIGHT_BROWSERS_PATH="$env:LOCALAPPDATA\awa\.playwright-browsers"
-  playwright install chromium
+  awa doctor --install-browser
   ```
+
+  项目内未安装全局命令时用 `uv run awa doctor --install-browser`。该命令需要联网下载约 150 MB，耗时较长；安装完成后可用 `awa doctor` 确认 `playwright_browsers.ok=true`。
 - **`awa doctor` 的 `playwright_browsers` 检查项只影响离线归档**：该项为**非阻塞**检查（`ok=false` 时 `ready` 仍可为 `true`、退出码仍为 0），不影响 `scan` / `crawl` / `articles` 等普通采集流程；只有准备使用 `--offline` 时才需要处理。
 - **采集期间**：提醒用户**不要操作鼠标键盘**，**不要关闭或最小化微信窗口**。采集是前台阻塞任务，鼠标键盘干扰会导致点击/滚动错位。
 
@@ -62,12 +63,13 @@ description: 采集微信公众号公开文章。当用户要求“爬取/采集
 ### `doctor`
 
 ```powershell
-awa doctor [--install-ca] [--home PATH]
+awa doctor [--install-ca] [--install-browser] [--home PATH]
 ```
 
 | 参数 | 默认 | 说明 |
 | --- | --- | --- |
 | `--install-ca` | 关闭（store_true） | CA 文件存在但未安装时安装到用户根证书库并重新检查 |
+| `--install-browser` | 关闭（store_true） | 安装离线归档所需的 Chromium 到 `<AWA_HOME>\.playwright-browsers`，安装后仍会执行一次完整检查 |
 | `--home PATH` | 无（用 AWA_HOME / 默认） | AWA_HOME 用户数据目录 |
 
 - 关键输出字段：`ok`/`ready`（bool，所有检查项是否全部通过）、`status`、`home`、`checks[]`、`accountName`、`dbPath`、`proxyAddress`。
@@ -182,7 +184,7 @@ $data.items | Select-Object -First 10 title, articleDate
 | 部分失败 | `crawl` 的 `errorCount>0`，`errors[]` 有摘要 | 读取 `errors[]`（含 `latestError`）确认失败原因；对失败文章可在同一主页重新 `crawl`（可加 `--skip-collected` 只补缺），不要编造成功数量。注意：开启 `--comments` / `--offline` 时，评论采集或离线归档的失败**也会计入 `errorCount`**，需结合 `latestError` 判断是正文采集失败还是附加环节失败 |
 | 系统代理异常 | 采集后网络异常 / 提示代理未恢复 | **不要手工改系统代理**。CLI 会在采集时临时切到 `127.0.0.1:18000`、结束后自动恢复；若异常请重跑 `doctor` 检查，必要时重启相关程序，切勿手工修改注册表代理 |
 | `crawl` 超时 | 输出 `status="timeout"`、退出码 1 | 说明未在 `--timeout` 内跑完。可减小 `--limit` 或放宽/去掉 `--timeout` 后重试；已入库的文章可用 `articles` 查看，不必重采 |
-| 离线归档缺浏览器 | `doctor` 的 `playwright_browsers.ok=false`（`detail` / `installCommand` 会给出缓存目录与安装命令） | 按第 1 节的 PowerShell 命令设置 `PLAYWRIGHT_BROWSERS_PATH` 后执行 `playwright install chromium`，再重试带 `--offline` 的 `crawl`；该项不影响不带 `--offline` 的采集 |
+| 离线归档缺浏览器 | `doctor` 的 `playwright_browsers.ok=false`（`detail` 会指出缺失的 chromium 目录） | 执行 `awa doctor --install-browser`（项目内用 `uv run awa doctor --install-browser`）安装 Chromium，再重新 `doctor` 确认 `playwright_browsers.ok=true`，然后重试带 `--offline` 的 `crawl`；该项不影响不带 `--offline` 的采集 |
 
 ## 5. 硬性规则
 
